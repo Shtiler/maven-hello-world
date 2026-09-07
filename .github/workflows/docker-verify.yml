@@ -1,0 +1,75 @@
+name: Reusable Published Image Verification
+
+on:
+  workflow_call:
+    inputs:
+      application-version:
+        description: Expected Maven project and image version
+        required: true
+        type: string
+      image-tag:
+        description: Published Docker image tag to pull and verify
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  verify:
+    name: Pull and run published Docker image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Pull image from Docker Hub
+        env:
+          IMAGE_TAG: ${{ inputs.image-tag }}
+        run: |
+          set -euo pipefail
+
+          test -n "$IMAGE_TAG"
+          docker pull "$IMAGE_TAG"
+
+          image_digest="$(docker image inspect "$IMAGE_TAG" --format '{{index .RepoDigests 0}}')"
+          test -n "$image_digest"
+          echo "IMAGE_DIGEST=$image_digest" >> "$GITHUB_ENV"
+          echo "Pulled image digest: $image_digest"
+
+      - name: Verify published image metadata
+        env:
+          APPLICATION_VERSION: ${{ inputs.application-version }}
+          EXPECTED_REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          configured_user="$(docker image inspect "$IMAGE_DIGEST" --format '{{.Config.User}}')"
+          image_version="$(docker image inspect "$IMAGE_DIGEST" --format '{{index .Config.Labels "org.opencontainers.image.version"}}')"
+          image_revision="$(docker image inspect "$IMAGE_DIGEST" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')"
+
+          case "$configured_user" in
+            ""|root|0|0:0|root:root)
+              echo "Published image must not run as root; configured user: ${configured_user:-<empty>}" >&2
+              exit 1
+              ;;
+          esac
+
+          test "$image_version" = "$APPLICATION_VERSION"
+          test "$image_revision" = "$EXPECTED_REVISION"
+          echo "Verified non-root image user: $configured_user"
+          echo "Verified image version: $image_version"
+          echo "Verified source revision: $image_revision"
+
+      - name: Run pulled image
+        run: |
+          set -euo pipefail
+
+          application_output="$(docker run --rm \
+            --network=none \
+            --read-only \
+            --cap-drop=ALL \
+            --security-opt=no-new-privileges:true \
+            "$IMAGE_DIGEST")"
+
+          test "$application_output" = "Hello World from Guy Shtiler!"
+          echo "Container output: $application_output"
+          echo "Verified published image: $IMAGE_DIGEST" >> "$GITHUB_STEP_SUMMARY"

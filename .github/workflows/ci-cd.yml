@@ -34,3 +34,14 @@ jobs:
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  verify-published-image:
+    name: Pull and run published image
+    if: github.event_name != 'pull_request'
+    needs:
+      - build
+      - docker
+    uses: ./.github/workflows/docker-verify.yml
+    with:
+      application-version: ${{ needs.build.outputs.application-version }}
+      image-tag: ${{ needs.docker.outputs.image-tag }}
