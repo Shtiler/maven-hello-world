@@ -1,0 +1,78 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - devops-assignment
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build application
+    runs-on: ubuntu-latest
+    outputs:
+      application-version: ${{ steps.version.outputs.application-version }}
+
+    defaults:
+      run:
+        working-directory: myapp
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '8'
+          cache: maven
+          cache-dependency-path: myapp/pom.xml
+
+      - name: Increment patch version
+        id: version
+        shell: bash
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+
+          current_version="$(mvn --batch-mode --quiet help:evaluate \
+            -Dexpression=project.version \
+            -DforceStdout \
+            -Dstyle.color=never)"
+
+          if [[ ! "$current_version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "Expected a semantic version such as 1.0.0, but found: $current_version" >&2
+            exit 1
+          fi
+
+          major="${BASH_REMATCH[1]}"
+          minor="${BASH_REMATCH[2]}"
+          patch="${BASH_REMATCH[3]}"
+          next_patch=$((10#$patch + RUN_NUMBER))
+          application_version="${major}.${minor}.${next_patch}"
+
+          mvn --batch-mode org.codehaus.mojo:versions-maven-plugin:2.19.1:set \
+            -DnewVersion="$application_version" \
+            -DgenerateBackupPoms=false
+
+          echo "APPLICATION_VERSION=$application_version" >> "$GITHUB_ENV"
+          echo "application-version=$application_version" >> "$GITHUB_OUTPUT"
+          echo "### Application version: $application_version" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify incremented version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          updated_version="$(mvn --batch-mode --quiet help:evaluate \
+            -Dexpression=project.version \
+            -DforceStdout \
+            -Dstyle.color=never)"
+
+          test "$updated_version" = "$APPLICATION_VERSION"
+          echo "Verified Maven project version: $updated_version"
