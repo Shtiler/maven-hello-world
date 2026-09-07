@@ -1,0 +1,122 @@
+name: Reusable Java Build
+
+on:
+  workflow_call:
+    outputs:
+      application-version:
+        description: Version assigned to the Maven project and JAR
+        value: ${{ jobs.build.outputs.application-version }}
+      artifact-name:
+        description: Name of the uploaded JAR artifact
+        value: ${{ jobs.build.outputs.artifact-name }}
+      artifact-digest:
+        description: SHA-256 digest of the uploaded artifact
+        value: ${{ jobs.build.outputs.artifact-digest }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build application
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    container:
+      image: maven:3.9.16-eclipse-temurin-8-noble@sha256:15522857a08bc468b05f4284d4a5a6c49eff7af7abfe16dc7770609484a67b8b
+    outputs:
+      application-version: ${{ steps.version.outputs.application-version }}
+      artifact-name: myapp-${{ steps.version.outputs.application-version }}
+      artifact-digest: ${{ steps.upload-artifact.outputs.artifact-digest }}
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: myapp
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-jdk8-${{ hashFiles('myapp/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-jdk8-
+
+      - name: Increment patch version
+        id: version
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+
+          current_version="$(mvn --batch-mode --quiet \
+            org.apache.maven.plugins:maven-help-plugin:3.5.1:evaluate \
+            -Dexpression=project.version \
+            -DforceStdout \
+            -Dstyle.color=never)"
+
+          if [[ ! "$current_version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "Expected a semantic version such as 1.0.0, but found: $current_version" >&2
+            exit 1
+          fi
+
+          major="${BASH_REMATCH[1]}"
+          minor="${BASH_REMATCH[2]}"
+          patch="${BASH_REMATCH[3]}"
+          next_patch=$((10#$patch + RUN_NUMBER))
+          application_version="${major}.${minor}.${next_patch}"
+
+          mvn --batch-mode --no-transfer-progress \
+            org.codehaus.mojo:versions-maven-plugin:2.19.1:set \
+            -DnewVersion="$application_version" \
+            -DgenerateBackupPoms=false
+
+          echo "APPLICATION_VERSION=$application_version" >> "$GITHUB_ENV"
+          echo "application-version=$application_version" >> "$GITHUB_OUTPUT"
+          echo "### Application version: $application_version" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify incremented version
+        run: |
+          set -euo pipefail
+
+          updated_version="$(mvn --batch-mode --quiet \
+            org.apache.maven.plugins:maven-help-plugin:3.5.1:evaluate \
+            -Dexpression=project.version \
+            -DforceStdout \
+            -Dstyle.color=never)"
+
+          test "$updated_version" = "$APPLICATION_VERSION"
+          echo "Verified Maven project version: $updated_version"
+
+      - name: Compile, test, and package
+        run: >-
+          mvn --errors --show-version --batch-mode --no-transfer-progress
+          clean verify
+
+      - name: Verify packaged JAR
+        run: |
+          set -euo pipefail
+
+          jar_path="target/myapp-${APPLICATION_VERSION}.jar"
+          test -f "$jar_path"
+
+          application_output="$(java -jar "$jar_path")"
+          test "$application_output" = "Hello World from Guy Shtiler!"
+
+          echo "Verified executable JAR: $jar_path"
+          echo "Application output: $application_output"
+
+      - name: Upload versioned JAR
+        id: upload-artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: myapp-${{ steps.version.outputs.application-version }}
+          path: myapp/target/myapp-${{ steps.version.outputs.application-version }}.jar
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

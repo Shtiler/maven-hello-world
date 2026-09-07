@@ -4,94 +4,19 @@ on:
   push:
     branches:
       - devops-assignment
+  pull_request:
+    branches:
+      - master
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
-    name: Build application
-    runs-on: ubuntu-24.04
-    container:
-      image: maven:3.9.16-eclipse-temurin-8-noble@sha256:15522857a08bc468b05f4284d4a5a6c49eff7af7abfe16dc7770609484a67b8b
-    outputs:
-      application-version: ${{ steps.version.outputs.application-version }}
-
-    defaults:
-      run:
-        working-directory: myapp
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Cache Maven dependencies
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: /root/.m2/repository
-          key: ${{ runner.os }}-maven-jdk8-${{ hashFiles('myapp/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-jdk8-
-
-      - name: Increment patch version
-        id: version
-        shell: bash
-        env:
-          RUN_NUMBER: ${{ github.run_number }}
-        run: |
-          set -euo pipefail
-
-          current_version="$(mvn --batch-mode --quiet help:evaluate \
-            -Dexpression=project.version \
-            -DforceStdout \
-            -Dstyle.color=never)"
-
-          if [[ ! "$current_version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-            echo "Expected a semantic version such as 1.0.0, but found: $current_version" >&2
-            exit 1
-          fi
-
-          major="${BASH_REMATCH[1]}"
-          minor="${BASH_REMATCH[2]}"
-          patch="${BASH_REMATCH[3]}"
-          next_patch=$((10#$patch + RUN_NUMBER))
-          application_version="${major}.${minor}.${next_patch}"
-
-          mvn --batch-mode org.codehaus.mojo:versions-maven-plugin:2.19.1:set \
-            -DnewVersion="$application_version" \
-            -DgenerateBackupPoms=false
-
-          echo "APPLICATION_VERSION=$application_version" >> "$GITHUB_ENV"
-          echo "application-version=$application_version" >> "$GITHUB_OUTPUT"
-          echo "### Application version: $application_version" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Verify incremented version
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          updated_version="$(mvn --batch-mode --quiet help:evaluate \
-            -Dexpression=project.version \
-            -DforceStdout \
-            -Dstyle.color=never)"
-
-          test "$updated_version" = "$APPLICATION_VERSION"
-          echo "Verified Maven project version: $updated_version"
-
-      - name: Compile, test, and package
-        run: mvn --batch-mode --no-transfer-progress clean verify
-
-      - name: Verify packaged JAR
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          jar_path="target/myapp-${APPLICATION_VERSION}.jar"
-          test -f "$jar_path"
-
-          application_output="$(java -jar "$jar_path")"
-          test "$application_output" = "Hello World from Guy Shtiler!"
-
-          echo "Verified executable JAR: $jar_path"
-          echo "Application output: $application_output"
+    name: Build and package application
+    uses: ./.github/workflows/java-build.yml
