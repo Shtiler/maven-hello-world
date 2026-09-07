@@ -12,10 +12,21 @@ on:
         required: true
         type: string
       image-name:
-        description: Local Docker image name
-        required: false
-        default: myapp
+        description: Docker image repository, without a version tag
+        required: true
         type: string
+      push-image:
+        description: Whether to publish the verified image to Docker Hub
+        required: false
+        default: false
+        type: boolean
+    secrets:
+      DOCKERHUB_USERNAME:
+        description: Docker Hub account name
+        required: false
+      DOCKERHUB_TOKEN:
+        description: Docker Hub access token
+        required: false
     outputs:
       image-tag:
         description: Versioned Docker image tag
@@ -110,3 +121,33 @@ jobs:
 
           test "$application_output" = "Hello World from Guy Shtiler!"
           echo "Container output: $application_output"
+
+      - name: Validate Docker Hub configuration
+        if: inputs.push-image
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          IMAGE_NAME: ${{ inputs.image-name }}
+        run: |
+          set -euo pipefail
+
+          test -n "$DOCKERHUB_USERNAME"
+          test -n "$DOCKERHUB_TOKEN"
+          test -n "$IMAGE_NAME"
+          [[ "$IMAGE_NAME" == */* ]]
+
+      - name: Log in to Docker Hub
+        if: inputs.push-image
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Push verified Docker image
+        if: inputs.push-image
+        run: |
+          set -euo pipefail
+
+          docker push "$IMAGE_TAG"
+          docker buildx imagetools inspect "$IMAGE_TAG"
+          echo "Published Docker image: $IMAGE_TAG" >> "$GITHUB_STEP_SUMMARY"
