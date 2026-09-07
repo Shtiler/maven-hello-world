@@ -12,7 +12,9 @@ permissions:
 jobs:
   build:
     name: Build application
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    container:
+      image: maven:3.9.16-eclipse-temurin-8-noble@sha256:15522857a08bc468b05f4284d4a5a6c49eff7af7abfe16dc7770609484a67b8b
     outputs:
       application-version: ${{ steps.version.outputs.application-version }}
 
@@ -22,15 +24,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
-
-      - name: Set up Java
-        uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: '8'
-          cache: maven
-          cache-dependency-path: myapp/pom.xml
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Increment patch version
         id: version
