@@ -44,4 +44,4 @@ jobs:
     uses: ./.github/workflows/docker-verify.yml
     with:
       application-version: ${{ needs.build.outputs.application-version }}
-      image-tag: ${{ needs.docker.outputs.image-tag }}
+      image-tag: ${{ vars.DOCKERHUB_REPOSITORY }}:${{ needs.build.outputs.application-version }}
