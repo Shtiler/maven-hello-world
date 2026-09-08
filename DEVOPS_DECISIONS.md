@@ -19,7 +19,7 @@ For this assignment, every pipeline run is treated as a patch release. CI reads 
 
 The same version identifies the Maven project, JAR, GitHub artifact, Docker tag, and OCI image label. This provides end-to-end traceability.
 
-## Workflow design
+## CI/CD summary
 
 ```text
 Maven version
@@ -34,7 +34,7 @@ Maven version
   -> verify the Deployment image and pod logs
 ```
 
-The main `ci-cd.yml` workflow coordinates four small reusable workflows in order:
+`ci-cd.yml` is the entry point and coordinates four reusable workflows in order:
 
 - `java-build.yml`: calculates the patch version, runs Maven `clean verify`, tests the JAR, and uploads it as a versioned artifact.
 - `docker-build.yml`: downloads that exact JAR, builds and security-checks the non-root image, runs it, and publishes it to Docker Hub.
@@ -43,7 +43,11 @@ The main `ci-cd.yml` workflow coordinates four small reusable workflows in order
 
 Jobs have explicit dependencies, timeouts, least-privilege permissions, actions pinned by commit SHA, and caching where useful. Maven runs in a digest-pinned Maven/JDK 8 container; Docker and Kubernetes jobs use the fixed `ubuntu-24.04` runner because they require its Docker daemon.
 
-Pull requests targeting `master` build and test without publishing or receiving secrets. Pushes to `master` publish the verified image and deploy the Helm chart.
+Pull requests targeting `master` run Maven and local Docker validation without using publishing secrets. Pushes to `master` and manual runs execute the full chain: build, publish, independently pull, and deploy.
+
+The deployment target is an ephemeral kind Kubernetes cluster created inside the GitHub Actions runner. The cluster is real but temporary and is deleted when the workflow finishes; nothing is deployed to the home computer or a persistent cloud environment.
+
+Important logic is kept in the reusable workflow responsible for it: version and JAR logic in `java-build.yml`, image security and publication in `docker-build.yml`, remote-image proof in `docker-verify.yml`, and Kubernetes deployment verification in `helm-deploy.yml`. The application version is passed between them so the JAR, artifact, Docker tag, and deployed image stay aligned.
 
 ## Docker decisions
 
@@ -55,7 +59,7 @@ A multi-stage Docker build was intentionally not used. Maven already creates the
 
 ## Helm decisions
 
-The chart has shared defaults in `values.yaml` and Maven-specific settings in `values-maven-project.yaml`. It intentionally renders only a Deployment to keep the assignment chart small and clear.
+The chart has generic, safe defaults in `values.yaml`. `values-maven-project.yaml` explicitly owns the Maven application's Docker Hub image, pull policy, release name, UID/GID, container restrictions, replica count, and resource requests/limits instead of inheriting nearly everything. Its image tag stays empty because CI injects the exact generated version. The chart intentionally renders only a Deployment to keep the assignment small and clear.
 
 The chart applies the same non-root and restricted-container settings as Docker. CI lints both value layers, creates an ephemeral kind cluster, deploys the exact published image version, and verifies the Deployment and application output. Because the application prints once and exits, Kubernetes restarts its container; a continuously healthy Deployment would require changing the application into a long-running process.
 

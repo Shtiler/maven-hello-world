@@ -1,7 +1,7 @@
 replicaCount: 1
 
 image:
-  repository: shtiler/maven-hello-world
+  repository: maven-hello-world
   tag: ""
   pullPolicy: IfNotPresent
 
@@ -10,8 +10,6 @@ fullnameOverride: ""
 
 podSecurityContext:
   runAsNonRoot: true
-  runAsUser: 10001
-  runAsGroup: 10001
   seccompProfile:
     type: RuntimeDefault
 
@@ -22,10 +20,4 @@ securityContext:
       - ALL
   readOnlyRootFilesystem: true
 
-resources:
-  requests:
-    cpu: 10m
-    memory: 32Mi
-  limits:
-    cpu: 100m
-    memory: 128Mi
+resources: {}
