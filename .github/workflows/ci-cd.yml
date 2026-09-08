@@ -3,7 +3,7 @@ name: CI/CD Pipeline
 on:
   push:
     branches:
-      - devops-assignment
+      - master
   pull_request:
     branches:
       - master

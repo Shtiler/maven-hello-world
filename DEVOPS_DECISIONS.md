@@ -36,7 +36,7 @@ Maven version
 
 The main workflow only coordinates four small reusable workflows: Java build, Docker build/publish, published-image verification, and Helm deployment. Jobs have explicit dependencies, timeouts, least-privilege permissions, actions pinned by commit SHA, and caching where useful. Maven runs in a digest-pinned Maven/JDK 8 container; Docker and Kubernetes jobs use the fixed `ubuntu-24.04` runner because they require its Docker daemon.
 
-Pull requests build and test without publishing or receiving secrets. Pushes to `devops-assignment` currently publish while the assignment is developed; this temporary trigger should be removed or changed to the final protected branch after merging.
+Pull requests targeting `master` build and test without publishing or receiving secrets. Pushes to `master` publish the verified image and deploy the Helm chart.
 
 ## Docker decisions
 
