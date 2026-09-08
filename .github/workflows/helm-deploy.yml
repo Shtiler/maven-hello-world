@@ -41,7 +41,7 @@ jobs:
           cluster_name: maven-hello-world
           wait: 60s
 
-      - name: Lint Deployment and Job configurations
+      - name: Lint chart configurations
         env:
           CHART_PATH: helm/maven-hello-world
           IMAGE_REPOSITORY: ${{ inputs.image-repository }}
@@ -54,7 +54,7 @@ jobs:
             --set-string image.tag="$IMAGE_TAG"
 
           helm lint "$CHART_PATH" \
-            --values "$CHART_PATH/values-job.yaml" \
+            --values "$CHART_PATH/values-maven-project.yaml" \
             --set-string image.repository="$IMAGE_REPOSITORY" \
             --set-string image.tag="$IMAGE_TAG"
 
@@ -69,7 +69,8 @@ jobs:
           helm upgrade --install maven-hello-world "$CHART_PATH" \
             --namespace maven-hello-world \
             --create-namespace \
-            --values "$CHART_PATH/values-job.yaml" \
+            --values "$CHART_PATH/values-maven-project.yaml" \
+            --set-string workload.type=Job \
             --set-string image.repository="$IMAGE_REPOSITORY" \
             --set-string image.tag="$IMAGE_TAG" \
             --atomic \

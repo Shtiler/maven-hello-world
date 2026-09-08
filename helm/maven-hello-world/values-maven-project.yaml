@@ -1,0 +1,6 @@
+workload:
+  type: Deployment
+
+image:
+  repository: shtiler/maven-hello-world
+  tag: ""
