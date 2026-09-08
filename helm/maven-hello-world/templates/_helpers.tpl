@@ -26,7 +26,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 automountServiceAccountToken: false
 securityContext:
   {{- toYaml .Values.podSecurityContext | nindent 2 }}
-restartPolicy: {{ ternary "Never" "Always" (eq .Values.workload.type "Job") }}
+restartPolicy: Always
 containers:
   - name: {{ .Chart.Name }}
     image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"

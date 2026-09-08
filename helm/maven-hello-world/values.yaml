@@ -1,10 +1,4 @@
-workload:
-  type: Deployment
-  deployment:
-    replicas: 1
-  job:
-    backoffLimit: 1
-    ttlSecondsAfterFinished: 300
+replicaCount: 1
 
 image:
   repository: shtiler/maven-hello-world

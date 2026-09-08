@@ -58,7 +58,7 @@ jobs:
             --set-string image.repository="$IMAGE_REPOSITORY" \
             --set-string image.tag="$IMAGE_TAG"
 
-      - name: Deploy Job configuration
+      - name: Deploy application
         env:
           CHART_PATH: helm/maven-hello-world
           IMAGE_REPOSITORY: ${{ inputs.image-repository }}
@@ -70,28 +70,49 @@ jobs:
             --namespace maven-hello-world \
             --create-namespace \
             --values "$CHART_PATH/values-maven-project.yaml" \
-            --set-string workload.type=Job \
             --set-string image.repository="$IMAGE_REPOSITORY" \
             --set-string image.tag="$IMAGE_TAG" \
-            --atomic \
-            --wait \
-            --wait-for-jobs \
             --timeout 3m
 
       - name: Verify deployed application
+        env:
+          EXPECTED_IMAGE: ${{ inputs.image-repository }}:${{ inputs.application-version }}
         run: |
           set -euo pipefail
 
-          kubectl wait \
+          deployed_image="$(kubectl get deployment maven-hello-world \
             --namespace maven-hello-world \
-            --for=condition=complete \
-            job/maven-hello-world \
-            --timeout=60s
+            --output=jsonpath='{.spec.template.spec.containers[0].image}')"
+          test "$deployed_image" = "$EXPECTED_IMAGE"
 
-          application_output="$(kubectl logs \
-            --namespace maven-hello-world \
-            job/maven-hello-world)"
+          application_output=""
+          for attempt in {1..12}; do
+            pod_name="$(kubectl get pods \
+              --namespace maven-hello-world \
+              --selector=app.kubernetes.io/instance=maven-hello-world \
+              --output=jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+
+            if [[ -n "$pod_name" ]]; then
+              application_output="$(kubectl logs \
+                --namespace maven-hello-world \
+                "$pod_name" 2>/dev/null || true)"
+
+              if [[ "$application_output" != "Hello World from Guy Shtiler!" ]]; then
+                application_output="$(kubectl logs \
+                  --namespace maven-hello-world \
+                  "$pod_name" \
+                  --previous 2>/dev/null || true)"
+              fi
+
+              if [[ "$application_output" = "Hello World from Guy Shtiler!" ]]; then
+                break
+              fi
+            fi
+
+            sleep 5
+          done
 
           test "$application_output" = "Hello World from Guy Shtiler!"
+          echo "Verified Deployment image: $deployed_image"
           echo "Kubernetes application output: $application_output"
-          echo "Helm Job completed with image: ${{ inputs.image-repository }}:${{ inputs.application-version }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Helm Deployment created with image: $deployed_image" >> "$GITHUB_STEP_SUMMARY"

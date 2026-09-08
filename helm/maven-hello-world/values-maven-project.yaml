@@ -1,5 +1,4 @@
-workload:
-  type: Deployment
+replicaCount: 1
 
 image:
   repository: shtiler/maven-hello-world

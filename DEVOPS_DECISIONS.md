@@ -31,7 +31,7 @@ Maven version
   -> fresh job pulls the published image by tag
   -> verify metadata and run the pulled digest
   -> deploy the same version with Helm to ephemeral Kubernetes
-  -> wait for completion and verify the pod logs
+  -> verify the Deployment image and pod logs
 ```
 
 The main `ci-cd.yml` workflow coordinates four small reusable workflows in order:
@@ -39,7 +39,7 @@ The main `ci-cd.yml` workflow coordinates four small reusable workflows in order
 - `java-build.yml`: calculates the patch version, runs Maven `clean verify`, tests the JAR, and uploads it as a versioned artifact.
 - `docker-build.yml`: downloads that exact JAR, builds and security-checks the non-root image, runs it, and publishes it to Docker Hub.
 - `docker-verify.yml`: uses a fresh runner to pull the published image, resolves its immutable digest, checks its labels/user, and runs it securely.
-- `helm-deploy.yml`: lints the chart, creates an ephemeral kind cluster, deploys the published version, and verifies the Kubernetes Job logs.
+- `helm-deploy.yml`: lints the chart, creates an ephemeral kind cluster, deploys the published version, and verifies the Deployment image and pod logs.
 
 Jobs have explicit dependencies, timeouts, least-privilege permissions, actions pinned by commit SHA, and caching where useful. Maven runs in a digest-pinned Maven/JDK 8 container; Docker and Kubernetes jobs use the fixed `ubuntu-24.04` runner because they require its Docker daemon.
 
@@ -55,9 +55,11 @@ A multi-stage Docker build was intentionally not used. Maven already creates the
 
 ## Helm decisions
 
-The chart has shared defaults in `values.yaml` and Maven-specific settings in `values-maven-project.yaml`. The Maven file selects `Deployment` by default, while the template accepts either `Deployment` or `Job`. CI overrides only this choice to `Job` because the program finishes after printing; a Deployment would continually restart it. A JSON schema rejects unsupported workload types.
+The chart has shared defaults in `values.yaml` and Maven-specific settings in `values-maven-project.yaml`. It intentionally renders only a Deployment to keep the assignment chart small and clear.
 
-The chart applies the same non-root and restricted-container settings as Docker. CI lints both configurations, creates an ephemeral kind cluster, deploys the exact published image version, waits for the Job, and verifies its logs.
+The chart applies the same non-root and restricted-container settings as Docker. CI lints both value layers, creates an ephemeral kind cluster, deploys the exact published image version, and verifies the Deployment and application output. Because the application prints once and exits, Kubernetes restarts its container; a continuously healthy Deployment would require changing the application into a long-running process.
+
+No Service, Ingress, or OpenShift Route is created because the application does not listen on a port or serve network traffic. These resources should be added only if the application becomes a network service.
 
 ## Configuration
 
