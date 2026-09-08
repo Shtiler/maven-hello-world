@@ -1,147 +1,69 @@
-# A simple, minimal Maven example: hello world
+# Maven Hello World - DevOps Assignment
 
-To create the files in this git repo we've already run `mvn archetype:generate` from http://maven.apache.org/guides/getting-started/maven-in-five-minutes.html
-    
-    mvn archetype:generate -DgroupId=com.myapp.app -DartifactId=myapp -DarchetypeArtifactId=maven-archetype-quickstart -DarchetypeVersion=1.4 -DinteractiveMode=false
+This repository contains a small Java application that prints:
 
-Now, to print "Hello World!", type either...
-
-    cd myapp
-    mvn compile
-    java -cp target/classes com.myapp.app.App
-
-or...
-
-    cd myapp
-    mvn package
-    java -cp target/myapp-1.0-SNAPSHOT.jar com.myapp.app.App
-
-Running `mvn clean` will get us back to only the source Java and the `pom.xml`:
-
-    murphy:myapp pdurbin$ mvn clean --quiet
-    murphy:myapp pdurbin$ ack -a -f
-    pom.xml
-    src/main/java/com/myapp/app/App.java
-    src/test/java/com/myapp/app/AppTest.java
-
-Running `mvn compile` produces a class file:
-
-    murphy:myapp pdurbin$ mvn compile --quiet
-    murphy:myapp pdurbin$ ack -a -f
-    pom.xml
-    src/main/java/com/myapp/app/App.java
-    src/test/java/com/myapp/app/AppTest.java
-    target/classes/com/myapp/app/App.class
-    murphy:myapp pdurbin$ 
-    murphy:myapp pdurbin$ java -cp target/classes com.myapp.app.App
-    Hello World!
-
-Running `mvn package` does a compile and creates the target directory, including a jar:
-
-    murphy:myapp pdurbin$ mvn clean --quiet
-    murphy:myapp pdurbin$ mvn package > /dev/null
-    murphy:myapp pdurbin$ ack -a -f
-    pom.xml
-    src/main/java/com/myapp/app/App.java
-    src/test/java/com/myapp/app/AppTest.java
-    target/classes/com/myapp/app/App.class
-    target/maven-archiver/pom.properties
-    target/myapp-1.0-SNAPSHOT.jar
-    target/surefire-reports/com.myapp.app.AppTest.txt
-    target/surefire-reports/TEST-com.myapp.app.AppTest.xml
-    target/test-classes/com/myapp/app/AppTest.class
-    murphy:myapp pdurbin$ 
-    murphy:myapp pdurbin$ java -cp target/myapp-1.0-SNAPSHOT.jar com.myapp.app.App
-    Hello World!
-
-Running `mvn clean compile exec:java` requires https://www.mojohaus.org/exec-maven-plugin/
-
-Running `java -jar target/myapp-1.0-SNAPSHOT.jar` requires http://maven.apache.org/plugins/maven-shade-plugin/
-
-# Runnable Jar:
-JAR Plugin
-The Maven’s jar plugin will create jar file and we need to define the main class that will get executed when we run the jar file.
-```
-<plugin>
-  <artifactId>maven-jar-plugin</artifactId>
-  <version>3.0.2</version>
-  <configuration>
-    <archive>
-      <manifest>
-        <addClasspath>true</addClasspath>
-        <mainClass>com.myapp.App</mainClass>
-      </manifest>
-    </archive>
-  </configuration>
-</plugin>
+```text
+Hello World from Guy Shtiler!
 ```
 
+The application source is `myapp/src/main/java/com/myapp/App.java`, and its base version is `1.0.0`.
 
-# Folder tree before package:
-```
-├── pom.xml
-└── src
-    ├── main
-    │   └── java
-    │       └── com
-    │           └── myapp
-    │               └── app
-    │                   └── App.java
-    └── test
-        └── java
-            └── com
-                └── myapp
-                    └── app
-                        └── AppTest.java
+## Repository overview
 
-```
-# Folder tree after package:
+The programming language is **Java**.
+
+**Maven** is the project's build and dependency-management tool. It reads `pom.xml` and runs an ordered lifecycle such as `compile`, `test`, `package`, and `verify`. Running a later phase also runs the required earlier phases.
+
+`pom.xml` is Maven's Project Object Model. It defines the project coordinates, version, dependencies, compiler settings, and build plugins. This project's coordinates are:
+
+```text
+com.myapp:myapp:1.0.0
 ```
 
-.
-├── pom.xml
-├── src
-│   ├── main
-│   │   └── java
-│   │       └── com
-│   │           └── myapp
-│   │               └── app
-│   │                   └── App.java
-│   └── test
-│       └── java
-│           └── com
-│               └── myapp
-│                   └── app
-│                       └── AppTest.java
-└── target
-    ├── classes
-    │   └── com
-    │       └── myapp
-    │           └── app
-    │               └── App.class
-    ├── generated-sources
-    │   └── annotations
-    ├── generated-test-sources
-    │   └── test-annotations
-    ├── maven-archiver
-    │   └── pom.properties
-    ├── maven-status
-    │   └── maven-compiler-plugin
-    │       ├── compile
-    │       │   └── default-compile
-    │       │       ├── createdFiles.lst
-    │       │       └── inputFiles.lst
-    │       └── testCompile
-    │           └── default-testCompile
-    │               ├── createdFiles.lst
-    │               └── inputFiles.lst
-    ├── myapp-1.0-SNAPSHOT.jar
-    ├── surefire-reports
-    │   ├── com.myapp.app.AppTest.txt
-    │   └── TEST-com.myapp.app.AppTest.xml
-    └── test-classes
-        └── com
-            └── myapp
-                └── app
-                    └── AppTest.class
+A GitHub **fork** is the server-side copy under this account; a **clone** is the local working copy.
+
+## Build and run
+
+From the `myapp` directory:
+
+```bash
+mvn --batch-mode clean verify
+java -jar target/myapp-1.0.0.jar
 ```
+
+## CI/CD
+
+The GitHub Actions entry point is `.github/workflows/ci-cd.yml`.
+
+```text
+calculate PATCH version
+  -> compile, test, package
+  -> upload the versioned JAR artifact
+  -> build and verify the non-root Docker image
+  -> push the versioned image to Docker Hub
+  -> pull and run the published image by digest
+  -> deploy and verify it with Helm in ephemeral Kubernetes
+```
+
+Pull requests targeting `master` run Maven and Docker validation without publishing. Pushes to `master` and manual runs execute the complete publication and deployment flow.
+
+Required GitHub configuration:
+
+- Variable: `DOCKERHUB_REPOSITORY`
+- Secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`
+
+The JAR, GitHub artifact, Docker tag, OCI version label, and Helm image tag all use the same generated application version.
+
+## Docker and Helm
+
+The Docker runtime image is digest-pinned, contains the tested JAR, and runs as non-root UID/GID `10001`.
+
+The Helm chart is under `helm/maven-hello-world`. It uses:
+
+- `values.yaml` for chart defaults
+- `values-maven-project.yaml` for application-specific values
+- a Deployment template with restricted container security settings
+
+CI deploys the chart to a temporary kind cluster inside the GitHub Actions runner. The cluster is removed after the workflow. No Service or Ingress is created because this console application does not listen on a network port.
+
+Implementation details and design reasoning are documented in [DEVOPS_DECISIONS.md](DEVOPS_DECISIONS.md).
