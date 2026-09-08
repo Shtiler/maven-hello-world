@@ -1,0 +1,58 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and package application
+    uses: ./.github/workflows/java-build.yml
+
+  docker:
+    name: Build and verify Docker image
+    needs: build
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      application-version: ${{ needs.build.outputs.application-version }}
+      artifact-name: ${{ needs.build.outputs.artifact-name }}
+      image-name: ${{ vars.DOCKERHUB_REPOSITORY }}
+      push-image: ${{ github.event_name != 'pull_request' }}
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  verify-published-image:
+    name: Pull and run published image
+    if: github.event_name != 'pull_request'
+    needs:
+      - build
+      - docker
+    uses: ./.github/workflows/docker-verify.yml
+    with:
+      application-version: ${{ needs.build.outputs.application-version }}
+      image-tag: ${{ vars.DOCKERHUB_REPOSITORY }}:${{ needs.build.outputs.application-version }}
+
+  helm:
+    name: Deploy Helm chart
+    if: github.event_name != 'pull_request'
+    needs:
+      - build
+      - verify-published-image
+    uses: ./.github/workflows/helm-deploy.yml
+    with:
+      application-version: ${{ needs.build.outputs.application-version }}
+      image-repository: ${{ vars.DOCKERHUB_REPOSITORY }}

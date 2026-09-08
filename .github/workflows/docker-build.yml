@@ -1,0 +1,145 @@
+name: Reusable Docker Build
+
+on:
+  workflow_call:
+    inputs:
+      application-version:
+        description: Maven project and JAR version
+        required: true
+        type: string
+      artifact-name:
+        description: Name of the JAR build artifact
+        required: true
+        type: string
+      image-name:
+        description: Docker image repository, without a version tag
+        required: true
+        type: string
+      push-image:
+        description: Whether to publish the verified image to Docker Hub
+        required: false
+        default: false
+        type: boolean
+    secrets:
+      DOCKERHUB_USERNAME:
+        description: Docker Hub account name
+        required: false
+      DOCKERHUB_TOKEN:
+        description: Docker Hub access token
+        required: false
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  docker:
+    name: Build and verify Docker image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download versioned JAR
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: docker-context
+
+      - name: Define image tag
+        id: image
+        env:
+          APPLICATION_VERSION: ${{ inputs.application-version }}
+          IMAGE_NAME: ${{ inputs.image-name }}
+        run: |
+          set -euo pipefail
+
+          image_tag="${IMAGE_NAME}:${APPLICATION_VERSION}"
+          echo "tag=$image_tag" >> "$GITHUB_OUTPUT"
+          echo "IMAGE_TAG=$image_tag" >> "$GITHUB_ENV"
+          echo "Docker image tag: $image_tag"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
+
+      - name: Build Docker image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          file: Dockerfile
+          load: true
+          push: false
+          platforms: linux/amd64
+          tags: ${{ steps.image.outputs.tag }}
+          build-args: |
+            APPLICATION_VERSION=${{ inputs.application-version }}
+            JAR_FILE=docker-context/myapp-${{ inputs.application-version }}.jar
+            VCS_REF=${{ github.sha }}
+          cache-from: type=gha,scope=myapp
+          cache-to: type=gha,mode=max,scope=myapp
+
+      - name: Verify image configuration
+        env:
+          APPLICATION_VERSION: ${{ inputs.application-version }}
+        run: |
+          set -euo pipefail
+
+          configured_user="$(docker image inspect "$IMAGE_TAG" --format '{{.Config.User}}')"
+          image_version="$(docker image inspect "$IMAGE_TAG" --format '{{index .Config.Labels "org.opencontainers.image.version"}}')"
+
+          case "$configured_user" in
+            ""|root|0|0:0|root:root)
+              echo "Docker image must not run as root; configured user: ${configured_user:-<empty>}" >&2
+              exit 1
+              ;;
+          esac
+
+          test "$image_version" = "$APPLICATION_VERSION"
+          echo "Verified non-root image user: $configured_user"
+          echo "Verified image version label: $image_version"
+
+      - name: Run Docker image
+        run: |
+          set -euo pipefail
+
+          application_output="$(docker run --rm \
+            --network=none \
+            --read-only \
+            --cap-drop=ALL \
+            --security-opt=no-new-privileges:true \
+            "$IMAGE_TAG")"
+
+          test "$application_output" = "Hello World from Guy Shtiler!"
+          echo "Container output: $application_output"
+
+      - name: Validate Docker Hub configuration
+        if: inputs.push-image
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          IMAGE_NAME: ${{ inputs.image-name }}
+        run: |
+          set -euo pipefail
+
+          test -n "$DOCKERHUB_USERNAME"
+          test -n "$DOCKERHUB_TOKEN"
+          test -n "$IMAGE_NAME"
+          [[ "$IMAGE_NAME" == */* ]]
+
+      - name: Log in to Docker Hub
+        if: inputs.push-image
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Push verified Docker image
+        if: inputs.push-image
+        run: |
+          set -euo pipefail
+
+          docker push "$IMAGE_TAG"
+          docker buildx imagetools inspect "$IMAGE_TAG"
+          echo "Published Docker image: $IMAGE_TAG" >> "$GITHUB_STEP_SUMMARY"
