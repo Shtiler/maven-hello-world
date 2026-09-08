@@ -45,3 +45,14 @@ jobs:
     with:
       application-version: ${{ needs.build.outputs.application-version }}
       image-tag: ${{ vars.DOCKERHUB_REPOSITORY }}:${{ needs.build.outputs.application-version }}
+
+  helm:
+    name: Deploy Helm chart
+    if: github.event_name != 'pull_request'
+    needs:
+      - build
+      - verify-published-image
+    uses: ./.github/workflows/helm-deploy.yml
+    with:
+      application-version: ${{ needs.build.outputs.application-version }}
+      image-repository: ${{ vars.DOCKERHUB_REPOSITORY }}

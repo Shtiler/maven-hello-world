@@ -1,0 +1,96 @@
+name: Reusable Helm Deployment
+
+on:
+  workflow_call:
+    inputs:
+      application-version:
+        description: Published application and image version
+        required: true
+        type: string
+      image-repository:
+        description: Published Docker image repository
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy and verify Helm release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Helm
+        uses: Azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.21.4
+
+      - name: Create ephemeral Kubernetes cluster
+        uses: helm/kind-action@06c1ae10762d3b9c1644e7fe69596ae519e015a2 # v1.15.0
+        with:
+          version: v0.33.0
+          kubectl_version: v1.36.4
+          node_image: kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
+          cluster_name: maven-hello-world
+          wait: 60s
+
+      - name: Lint Deployment and Job configurations
+        env:
+          CHART_PATH: helm/maven-hello-world
+          IMAGE_REPOSITORY: ${{ inputs.image-repository }}
+          IMAGE_TAG: ${{ inputs.application-version }}
+        run: |
+          set -euo pipefail
+
+          helm lint "$CHART_PATH" \
+            --set-string image.repository="$IMAGE_REPOSITORY" \
+            --set-string image.tag="$IMAGE_TAG"
+
+          helm lint "$CHART_PATH" \
+            --values "$CHART_PATH/values-job.yaml" \
+            --set-string image.repository="$IMAGE_REPOSITORY" \
+            --set-string image.tag="$IMAGE_TAG"
+
+      - name: Deploy Job configuration
+        env:
+          CHART_PATH: helm/maven-hello-world
+          IMAGE_REPOSITORY: ${{ inputs.image-repository }}
+          IMAGE_TAG: ${{ inputs.application-version }}
+        run: |
+          set -euo pipefail
+
+          helm upgrade --install maven-hello-world "$CHART_PATH" \
+            --namespace maven-hello-world \
+            --create-namespace \
+            --values "$CHART_PATH/values-job.yaml" \
+            --set-string image.repository="$IMAGE_REPOSITORY" \
+            --set-string image.tag="$IMAGE_TAG" \
+            --atomic \
+            --wait \
+            --wait-for-jobs \
+            --timeout 3m
+
+      - name: Verify deployed application
+        run: |
+          set -euo pipefail
+
+          kubectl wait \
+            --namespace maven-hello-world \
+            --for=condition=complete \
+            job/maven-hello-world \
+            --timeout=60s
+
+          application_output="$(kubectl logs \
+            --namespace maven-hello-world \
+            job/maven-hello-world)"
+
+          test "$application_output" = "Hello World from Guy Shtiler!"
+          echo "Kubernetes application output: $application_output"
+          echo "Helm Job completed with image: ${{ inputs.image-repository }}:${{ inputs.application-version }}" >> "$GITHUB_STEP_SUMMARY"
